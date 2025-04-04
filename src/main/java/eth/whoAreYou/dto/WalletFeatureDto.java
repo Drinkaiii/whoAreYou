@@ -1,5 +1,6 @@
 package eth.whoAreYou.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -17,7 +18,11 @@ public class WalletFeatureDto {
     private long outTxCount;
     private double inOutRatio;
     private double selfTxRatio;
+
+    @JsonProperty("max_tx_in_1h")
     private long maxTxIn1h;
+
+    @JsonProperty("max_tx_in_5min")
     private long maxTxIn5min;
     private double txTimeStd;
     private double zeroValueTxRatio;
