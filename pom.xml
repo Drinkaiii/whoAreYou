@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>eth.</groupId>
 	<artifactId>whoAreYou</artifactId>
-	<version>1.0</version>
+	<version>1.0.1</version>
 	<name>whoAreYou</name>
 	<description>Demo project for Spring Boot</description>
 	<url/>
