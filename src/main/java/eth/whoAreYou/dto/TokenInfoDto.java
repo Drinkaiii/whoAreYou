@@ -14,4 +14,5 @@ public class TokenInfoDto {
     private String name;
     private String symbol;
     private double price;
+    private String iconUrl;
 }
