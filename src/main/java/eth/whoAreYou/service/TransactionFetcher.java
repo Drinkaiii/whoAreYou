@@ -12,7 +12,7 @@ import java.util.*;
 @Service
 public class TransactionFetcher {
 
-    @Value("${blockchain.api.key}")
+    @Value("${nodit.api.key}")
     private String apiKey;
 
     private static final String BASE_URL = "https://web3.nodit.io/v1/ethereum/mainnet/blockchain/getTransactionsByAccount";
