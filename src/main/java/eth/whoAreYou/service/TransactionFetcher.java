@@ -2,6 +2,7 @@ package eth.whoAreYou.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eth.whoAreYou.dto.TransactionDto;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -11,14 +12,15 @@ import java.util.*;
 @Service
 public class TransactionFetcher {
 
-    private static final String API_KEY = "diGQKDrKo9cmdQodVlK_vKErGAJHDV7k";
+    @Value("${blockchain.api.key}")
+    private String apiKey;
+
     private static final String BASE_URL = "https://web3.nodit.io/v1/ethereum/mainnet/blockchain/getInternalTransactionsByAccount";
     private static final int MAX_RETRIES = 5;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // 👉 預設：抓到底（符合原本邏輯）
     public List<TransactionDto> fetchTransactions(String walletAddress, int maxTransactions) {
         return fetchTransactions(walletAddress, maxTransactions, Integer.MAX_VALUE);
     }
@@ -36,11 +38,11 @@ public class TransactionFetcher {
             payload.put("withCount", false);
             payload.put("withLogs", false);
             payload.put("withDecode", false);
-            payload.put("rpp", 1000); // 每頁最多 1000 筆
+            payload.put("rpp", 1000);
             if (cursor != null) payload.put("cursor", cursor);
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-API-KEY", API_KEY);
+            headers.set("X-API-KEY", apiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
 
