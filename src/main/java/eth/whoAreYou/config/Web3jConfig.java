@@ -20,10 +20,10 @@ public class Web3jConfig {
     @Value("${NODIT_ETHEREUM_HTTP_URL}")
     private String noditEthereumHttpUrl;
 
-    @Value("${NODIT_SEPOLIA_WEBSOCKET_URL}")
+    @Value("${NODIT_BASE_WEBSOCKET_URL}")
     private String noditSepoliaWebsocketUrl;
 
-    @Value("${NODIT_SEPOLIA_HTTP_URL}")
+    @Value("${NODIT_BASE_HTTP_URL}")
     private String noditSepoliaHttpUrl;
 
     @Value("${blockchain:ethereum}")

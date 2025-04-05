@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 public class AddressInfoDto {
+    private String chain; // Ethereum, Base
     private String addressType; // EOA, ERC-20, ERC-721, ERC-1155, Proxy, Unknown
     private String resolvedAddress;
     private Object details;
