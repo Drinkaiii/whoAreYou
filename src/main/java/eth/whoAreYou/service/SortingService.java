@@ -86,11 +86,10 @@ public class SortingService {
                 }
 
                 try {
-                    // 提取特徵並進行異常檢測
-                    // 在這裡使用原有方法，我們先假設 fetcher 和 detector 不需要多鏈支援
-                    TransactionFetcher.FetchResult result = fetcher.fetchTransactions(checksumAddress, 1000, 1);
+                    // 提取特徵並進行異常檢測 - 使用對應鏈的端點
+                    TransactionFetcher.FetchResult result = fetcher.fetchTransactions(checksumAddress, 1000, 1, chain);
                     eth.whoAreYou.dto.WalletFeatureDto features = extractor.extract(result.transactions(), checksumAddress, result.totalCount());
-                    java.util.Map<String, Object> anomalyResult = detector.predict(features);
+                    java.util.Map<String, Object> anomalyResult = detector.predict(features, chain);  // 傳入鏈參數
                     detailsMap.put("anomalyDetection", anomalyResult);
                 } catch (Exception e) {
                     // 處理異常情況
