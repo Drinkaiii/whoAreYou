@@ -1,5 +1,6 @@
 package eth.whoAreYou.service;
 
+import eth.whoAreYou.client.AnomalyDetectorClient;
 import eth.whoAreYou.dto.TokenDetailsDto;
 import eth.whoAreYou.dto.TokenInfoDto;
 import eth.whoAreYou.dto.InteractionInfoDto;
@@ -32,6 +33,9 @@ public class SortingService {
     private final TokenPriceService tokenPriceService;
     private final TokenIconService tokenIconService;
     private final AddressInteractionService addressInteractionService;
+    private final TransactionFetcher fetcher;
+    private final FeatureExtractor extractor;
+    private final AnomalyDetectorClient detector;
 
     public AddressInfoDto classify(String targetAddress, String selfAddress) throws Exception {
         String checksumAddress = Keys.toChecksumAddress(targetAddress);
@@ -45,12 +49,27 @@ public class SortingService {
                     .addressType("EOA")
                     .resolvedAddress(checksumAddress);
 
+            // 建立一個 Map 來包含不同來源的資訊
+            java.util.Map<String, Object> detailsMap = new java.util.HashMap<>();
+
+            // 添加互動信息（如果有）
             if (selfAddress != null && !selfAddress.isBlank()) {
                 InteractionInfoDto interaction = addressInteractionService.getInteractionInfo(selfAddress, checksumAddress);
-                builder.details(interaction);
-            } else {
-                builder.details(null);
+                detailsMap.put("interaction", interaction);
             }
+
+            try {
+                // 提取特徵並進行異常檢測
+                TransactionFetcher.FetchResult result = fetcher.fetchTransactions(checksumAddress, 1000, 1);
+                eth.whoAreYou.dto.WalletFeatureDto features = extractor.extract(result.transactions(), checksumAddress, result.totalCount());
+                java.util.Map<String, Object> anomalyResult = detector.predict(features);
+                detailsMap.put("anomalyDetection", anomalyResult);
+            } catch (Exception e) {
+                // 處理異常情況
+                detailsMap.put("anomalyDetection", java.util.Map.of("error", e.getMessage()));
+            }
+
+            builder.details(detailsMap);
 
             return builder.build();
         }
