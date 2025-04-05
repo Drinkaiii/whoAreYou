@@ -37,7 +37,7 @@ public class NFTInfoService {
         String name = callStringMethod(contractAddress, "name");
         BigInteger totalSupply = callUintMethod(contractAddress, "totalSupply");
 
-        // 拿 tokenId = 0 的 metadata
+        // use tokenId = 0 metadata
         String tokenUri = callTokenURIMethod(contractAddress, BigInteger.ZERO);
         String imageUrl = extractImageFromMetadata(tokenUri);
 
