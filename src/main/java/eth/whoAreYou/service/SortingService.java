@@ -20,6 +20,7 @@ import org.web3j.protocol.core.methods.response.*;
 import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -63,36 +64,46 @@ public class SortingService {
 
 
         if (code == null || code.equals("0x") || code.equals("0x0")) {
-            // 是 EOA，檢查是否與 selfAddress 有互動
-            AddressInfoDto.AddressInfoDtoBuilder builder = AddressInfoDto.builder()
-                    .addressType("EOA")
-                    .resolvedAddress(checksumAddress);
+            // 是 EOA，查詢兩條鏈的資訊
+            List<AddressInfoDto> addressInfoList = new ArrayList<>();
 
-            // 建立一個 Map 來包含不同來源的資訊
-            java.util.Map<String, Object> detailsMap = new java.util.HashMap<>();
+            // 針對兩條鏈分別查詢
+            List<String> chains = List.of("ETHEREUM", "BASE");
 
-            // 添加互動信息（如果有）
-            if (selfAddress != null && !selfAddress.isBlank()) {
-                InteractionInfoDto interaction = addressInteractionService.getInteractionInfo(selfAddress, checksumAddress);
-                detailsMap.put("interaction", interaction);
+            for (String chain : chains) {
+                AddressInfoDto.AddressInfoDtoBuilder builder = AddressInfoDto.builder()
+                        .addressType("EOA")
+                        .chain(chain)  // 設置鏈標識
+                        .resolvedAddress(checksumAddress);
+
+                // 建立一個 Map 來包含不同來源的資訊
+                java.util.Map<String, Object> detailsMap = new java.util.HashMap<>();
+
+                // 添加互動信息（如果有）
+                if (selfAddress != null && !selfAddress.isBlank()) {
+                    InteractionInfoDto interaction = addressInteractionService.getInteractionInfo(selfAddress, checksumAddress, chain);
+                    detailsMap.put("interaction", interaction);
+                }
+
+                try {
+                    // 提取特徵並進行異常檢測
+                    // 在這裡使用原有方法，我們先假設 fetcher 和 detector 不需要多鏈支援
+                    TransactionFetcher.FetchResult result = fetcher.fetchTransactions(checksumAddress, 1000, 1);
+                    eth.whoAreYou.dto.WalletFeatureDto features = extractor.extract(result.transactions(), checksumAddress, result.totalCount());
+                    java.util.Map<String, Object> anomalyResult = detector.predict(features);
+                    detailsMap.put("anomalyDetection", anomalyResult);
+                } catch (Exception e) {
+                    // 處理異常情況
+                    detailsMap.put("anomalyDetection", java.util.Map.of("error", e.getMessage()));
+                }
+
+                builder.details(detailsMap);
+                addressInfoList.add(builder.build());
             }
 
-            try {
-                // 提取特徵並進行異常檢測
-                TransactionFetcher.FetchResult result = fetcher.fetchTransactions(checksumAddress, 1000, 1);
-                eth.whoAreYou.dto.WalletFeatureDto features = extractor.extract(result.transactions(), checksumAddress, result.totalCount());
-                java.util.Map<String, Object> anomalyResult = detector.predict(features);
-                detailsMap.put("anomalyDetection", anomalyResult);
-            } catch (Exception e) {
-                // 處理異常情況
-                detailsMap.put("anomalyDetection", java.util.Map.of("error", e.getMessage()));
-            }
-
-            builder.details(detailsMap);
-
-            return builder.build();
+            // 返回包含兩條鏈資訊的結果
+            return AddressResponseDto.builder().data(addressInfoList).build();
         }
-
         // Step 1: resolve proxy (EIP-1967)
         String implementation = resolveImplementationAddress(web3j, checksumAddress);
         String resolvedAddress = implementation != null ? implementation : checksumAddress;

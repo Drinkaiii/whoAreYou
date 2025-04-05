@@ -30,7 +30,7 @@ public class NoditApiClient {
 
     private static final String BASE_URL = "https://web3.nodit.io/v1";
 
-    public InteractionInfoDto checkInteraction(String selfAddress, String targetAddress) {
+    public InteractionInfoDto checkInteraction(String selfAddress, String targetAddress, String protocol) {
         try {
             String url = String.format("%s/%s/%s/blockchain/getTransactionsByAccount", BASE_URL, protocol, network);
 
