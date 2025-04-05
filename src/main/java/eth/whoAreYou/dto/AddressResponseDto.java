@@ -12,5 +12,5 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 public class AddressResponseDto {
-    private List data;
+    private List<AddressInfoDto> data;
 }
