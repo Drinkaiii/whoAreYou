@@ -24,10 +24,26 @@ import java.util.List;
 public class TokenDetailsService {
 
     @Autowired
-    @Qualifier("web3jHttp")
-    private Web3j web3j;
+    @Qualifier("ethereumWeb3jHttp")
+    private Web3j ethereumWeb3jHttp;
 
-    public String callContractMethod(String contractAddress, String methodName) throws Exception {
+    @Autowired
+    @Qualifier("baseWeb3jHttp")
+    private Web3j baseWeb3jHttp;
+
+    public TokenDetailsDto getTokenDetails(String contractAddress, String blockchain) throws Exception {
+        Web3j web3j = resolveWeb3j(blockchain);
+
+        String name = callContractMethod(web3j, contractAddress, "name");
+        String symbol = callContractMethod(web3j, contractAddress, "symbol");
+
+        return TokenDetailsDto.builder()
+                .name(name)
+                .symbol(symbol)
+                .build();
+    }
+
+    private String callContractMethod(Web3j web3j, String contractAddress, String methodName) throws Exception {
         Function function = new Function(
                 methodName,
                 Collections.emptyList(),
@@ -46,12 +62,13 @@ public class TokenDetailsService {
         return results.isEmpty() ? null : results.get(0).getValue().toString();
     }
 
-    public TokenDetailsDto getTokenDetails(String contractAddress) throws Exception {
-        String name = callContractMethod(contractAddress, "name");
-        String symbol = callContractMethod(contractAddress, "symbol");
-        return TokenDetailsDto.builder()
-                .name(name)
-                .symbol(symbol)
-                .build();
+    private Web3j resolveWeb3j(String blockchain) {
+        if ("ETHEREUM".equalsIgnoreCase(blockchain)) {
+            return ethereumWeb3jHttp;
+        } else if ("BASE".equalsIgnoreCase(blockchain)) {
+            return baseWeb3jHttp;
+        } else {
+            throw new IllegalArgumentException("Unsupported blockchain: " + blockchain);
+        }
     }
 }

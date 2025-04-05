@@ -1,9 +1,6 @@
 package eth.whoAreYou.service;
 
-import eth.whoAreYou.dto.TokenDetailsDto;
-import eth.whoAreYou.dto.TokenInfoDto;
-import eth.whoAreYou.dto.InteractionInfoDto;
-import eth.whoAreYou.dto.AddressInfoDto;
+import eth.whoAreYou.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,19 +39,21 @@ public class SortingService {
     private final TokenIconService tokenIconService;
     private final AddressInteractionService addressInteractionService;
 
-    public AddressInfoDto classify(String targetAddress, String selfAddress) throws Exception {
-        String blockchain;
+    public Object classify(String targetAddress, String selfAddress) throws Exception {
+        String blockchain="";
         String checksumAddress = Keys.toChecksumAddress(targetAddress);
         EthGetCode ethereumGetCode = ethereumWeb3jHttp.ethGetCode(checksumAddress, DefaultBlockParameterName.LATEST).send();
         String code = ethereumGetCode.getCode();
-        if (code != null){
+        if (code != null && !code.equals("0x") && !code.equals("0x0")){
             blockchain = "ETHEREUM";
         }
         else {
             EthGetCode baseGetCode = baseWeb3jHttp.ethGetCode(checksumAddress, DefaultBlockParameterName.LATEST).send();
             code = baseGetCode.getCode();
-            if (code != null) blockchain = "BASE";
+            if (code != null && !code.equals("0x") && !code.equals("0x0"))
+                blockchain = "BASE";
         }
+        Web3j web3j = getWeb3jByChain(blockchain);
 
         if (code == null || code.equals("0x") || code.equals("0x0")) {
             // 是 EOA，檢查是否與 selfAddress 有互動
@@ -73,30 +72,34 @@ public class SortingService {
         }
 
         // Step 1: resolve proxy (EIP-1967)
-        String implementation = resolveImplementationAddress(checksumAddress);
+        String implementation = resolveImplementationAddress(web3j, checksumAddress);
         String resolvedAddress = implementation != null ? implementation : checksumAddress;
 
         // Step 2: ERC-721 (Try ERC-165 interfaces)
-        if (supportsInterface(resolvedAddress, "0x80ac58cd")) {
-            return AddressInfoDto.builder()
+        if (supportsInterface(web3j, resolvedAddress, "0x80ac58cd")) {
+            AddressInfoDto addressInfoDto = AddressInfoDto.builder()
+                    .chain(blockchain)
                     .addressType("ERC-721")
                     .resolvedAddress(resolvedAddress)
-                    .details(nftInfoService.getNFTInfo(resolvedAddress))
+                    .details(nftInfoService.getNFTInfo(resolvedAddress,blockchain))
                     .build();
+            return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
         }
 
         // Step 3: ERC-1155 (Try ERC-165 interfaces)
-        if (supportsInterface(resolvedAddress, "0xd9b67a26")) {
-            return AddressInfoDto.builder()
+        if (supportsInterface(web3j, resolvedAddress, "0xd9b67a26")) {
+            AddressInfoDto addressInfoDto = AddressInfoDto.builder()
+                    .chain(blockchain)
                     .addressType("ERC-1155")
                     .resolvedAddress(resolvedAddress)
                     .details("ERC-1155 尚未實作 Service")
                     .build();
+            return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
         }
 
         // Step 4: ERC-20 (check decimals/symbol/name)
-        if (hasERC20Interface(resolvedAddress)) {
-            TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(resolvedAddress);
+        if (hasERC20Interface(web3j, resolvedAddress)) {
+            TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(resolvedAddress, blockchain);
             double price = tokenPriceService.getTokenPrice(resolvedAddress).getOrDefault("price", -1.0);
             String icon = tokenIconService.getTokenIcon(resolvedAddress);
             TokenInfoDto tokenInfoDto = TokenInfoDto.builder()
@@ -105,39 +108,42 @@ public class SortingService {
                     .price(price)
                     .iconUrl(icon)
                     .build();
-            return AddressInfoDto.builder()
+            AddressInfoDto addressInfoDto = AddressInfoDto.builder()
+                    .chain(blockchain)
                     .addressType("ERC-20")
                     .resolvedAddress(resolvedAddress)
                     .details(tokenInfoDto)
                     .build();
+            return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
         }
 
         // Step 5: Unknown 合約類型
-        return AddressInfoDto.builder()
+        AddressInfoDto addressInfoDto = AddressInfoDto.builder()
                 .addressType("Unknown")
                 .resolvedAddress(resolvedAddress)
                 .details(null)
                 .build();
+        return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
     }
 
-    private boolean hasERC20Interface(String address) {
+    private boolean hasERC20Interface(Web3j web3j, String address) {
         try {
             Function decimals = new Function("decimals", List.of(), List.of(new TypeReference<Uint8>() {}));
             String encoded = FunctionEncoder.encode(decimals);
-            EthCall call = ethereumWeb3jHttp.ethCall(Transaction.createEthCallTransaction(null, address, encoded), DefaultBlockParameterName.LATEST).send();
+            EthCall call = web3j.ethCall(Transaction.createEthCallTransaction(null, address, encoded), DefaultBlockParameterName.LATEST).send();
             return call.getValue() != null && !call.getValue().equals("0x");
         } catch (Exception e) {
             return false;
         }
     }
 
-    private boolean supportsInterface(String address, String interfaceId) {
+    private boolean supportsInterface(Web3j web3j, String address, String interfaceId) {
         try {
             Function supportsInterface = new Function("supportsInterface",
                     List.of(new Bytes4(Numeric.hexStringToByteArray(interfaceId))),
                     List.of(new TypeReference<Bool>() {}));
             String encoded = FunctionEncoder.encode(supportsInterface);
-            EthCall call = ethereumWeb3jHttp.ethCall(Transaction.createEthCallTransaction(null, address, encoded),
+            EthCall call = web3j.ethCall(Transaction.createEthCallTransaction(null, address, encoded),
                     DefaultBlockParameterName.LATEST).send();
             return call.getValue() != null && call.getValue().endsWith("1");
         } catch (Exception e) {
@@ -145,22 +151,35 @@ public class SortingService {
         }
     }
 
-    private String resolveImplementationAddress(String proxyAddress) {
+    private String resolveImplementationAddress(Web3j web3j, String proxyAddress) {
         try {
             BigInteger slot = new BigInteger("360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc", 16);
-            EthGetStorageAt storage = ethereumWeb3jHttp.ethGetStorageAt(proxyAddress, slot, DefaultBlockParameterName.LATEST).send();
+            EthGetStorageAt storage = web3j.ethGetStorageAt(
+                    proxyAddress,
+                    slot,
+                    DefaultBlockParameterName.LATEST
+            ).send();
 
             String raw = storage.getData();
-            // EIP-1967 null is 0x000000...（66 char: 0x + 64*0）
             if (raw == null || raw.equals("0x") || raw.equals("0x0000000000000000000000000000000000000000000000000000000000000000")) {
-                return null; // if it isn't proxy, system will use origin address
+                return null;
             }
 
             if (raw.length() < 66) return null;
+
             String impl = "0x" + raw.substring(raw.length() - 40);
             return Keys.toChecksumAddress(impl);
         } catch (Exception e) {
             return null;
         }
     }
+
+    private Web3j getWeb3jByChain(String blockchain) {
+        return switch (blockchain.toUpperCase()) {
+            case "ETHEREUM" -> ethereumWeb3jHttp;
+            case "BASE" -> baseWeb3jHttp;
+            default -> throw new IllegalArgumentException("Unsupported blockchain: " + blockchain);
+        };
+    }
+
 }
