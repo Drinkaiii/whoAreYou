@@ -1,30 +1,27 @@
 package eth.whoAreYou.service;
 
-import lombok.AllArgsConstructor;
+import eth.whoAreYou.dto.TokenDetailsDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.web3j.protocol.Web3j;
-import org.web3j.protocol.http.HttpService;
-import org.web3j.tx.ReadonlyTransactionManager;
-import org.web3j.tx.gas.DefaultGasProvider;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.FunctionReturnDecoder;
+import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.Type;
 import org.web3j.abi.datatypes.Utf8String;
+import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.methods.request.Transaction;
 import org.web3j.protocol.core.methods.response.EthCall;
+import org.web3j.protocol.core.DefaultBlockParameterName;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class TokenInfoService {
+public class TokenDetailsService {
 
     @Autowired
     @Qualifier("web3jHttp")
@@ -34,14 +31,14 @@ public class TokenInfoService {
         Function function = new Function(
                 methodName,
                 Collections.emptyList(),
-                Collections.singletonList(new org.web3j.abi.TypeReference<Utf8String>() {})
+                Collections.singletonList(new TypeReference<Utf8String>() {})
         );
 
         String encodedFunction = FunctionEncoder.encode(function);
 
         EthCall response = web3j.ethCall(
                 Transaction.createEthCallTransaction(null, contractAddress, encodedFunction),
-                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+                DefaultBlockParameterName.LATEST
         ).send();
 
         List<Type> results = FunctionReturnDecoder.decode(response.getValue(), function.getOutputParameters());
@@ -49,13 +46,12 @@ public class TokenInfoService {
         return results.isEmpty() ? null : results.get(0).getValue().toString();
     }
 
-    public TokenInfo getTokenInfo(String contractAddress) throws Exception {
+    public TokenDetailsDto getTokenDetails(String contractAddress) throws Exception {
         String name = callContractMethod(contractAddress, "name");
         String symbol = callContractMethod(contractAddress, "symbol");
-        return new TokenInfo(name, symbol);
+        return TokenDetailsDto.builder()
+                .name(name)
+                .symbol(symbol)
+                .build();
     }
-
-    public record TokenInfo(String name, String symbol) {}
 }
-
-

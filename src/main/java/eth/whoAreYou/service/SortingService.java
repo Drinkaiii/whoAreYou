@@ -1,5 +1,6 @@
 package eth.whoAreYou.service;
 
+import eth.whoAreYou.dto.TokenDetailsDto;
 import eth.whoAreYou.dto.TokenInfoDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,7 +26,7 @@ import java.util.List;
 public class SortingService {
 
     private final Web3j web3jHttp;
-    private final TokenInfoService tokenInfoService;
+    private final TokenDetailsService tokenInfoService;
     private final NFTInfoService nftInfoService;
     private final TokenPriceService tokenPriceService;
 
@@ -66,11 +67,11 @@ public class SortingService {
 
         // Step 4: ERC-20 (check decimals/symbol/name)
         if (hasERC20Interface(resolvedAddress)) {
-            TokenInfoService.TokenInfo info = tokenInfoService.getTokenInfo(resolvedAddress);
+            TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(resolvedAddress);
             double price = tokenPriceService.getTokenPrice(resolvedAddress).getOrDefault("price", -1.0);
             TokenInfoDto tokenInfoDto = TokenInfoDto.builder()
-                    .name(info.name())
-                    .symbol(info.symbol())
+                    .name(tokenDetailsDto.getName())
+                    .symbol(tokenDetailsDto.getSymbol())
                     .price(price)
                     .build();
             return AddressInfoDto.builder()

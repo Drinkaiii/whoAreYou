@@ -1,8 +1,9 @@
 package eth.whoAreYou.controller;
 
 import eth.whoAreYou.dto.NFTInfoDto;
+import eth.whoAreYou.dto.TokenDetailsDto;
 import eth.whoAreYou.service.NFTInfoService;
-import eth.whoAreYou.service.TokenInfoService;
+import eth.whoAreYou.service.TokenDetailsService;
 import eth.whoAreYou.service.TokenPriceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,15 +17,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TokenInfoController {
 
-    private final TokenInfoService tokenInfoService;
+    private final TokenDetailsService tokenInfoService;
     private final TokenPriceService tokenPriceService;
     private final NFTInfoService nftInfoService;
 
     @GetMapping("/info/{address}")
     public ResponseEntity<?> getTokenInfo(@PathVariable String address) {
         try {
-            TokenInfoService.TokenInfo info = tokenInfoService.getTokenInfo(address);
-            return ResponseEntity.ok(info);
+            TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(address);
+            return ResponseEntity.ok(tokenDetailsDto);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("查詢失敗：" + e.getMessage());
         }
