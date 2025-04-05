@@ -111,6 +111,8 @@ public class SortingService {
         // Step 1: resolve proxy (EIP-1967)
         String implementation = resolveImplementationAddress(web3j, checksumAddress);
         String resolvedAddress = implementation != null ? implementation : checksumAddress;
+        System.out.println("Resolved address: " + resolvedAddress);
+
 
         // Step 2: ERC-721 (Try ERC-165 interfaces)
         if (supportsInterface(web3j, resolvedAddress, "0x80ac58cd")) {
@@ -137,11 +139,9 @@ public class SortingService {
         // Step 4: ERC-20 (check decimals/symbol/name)
         if (hasERC20Interface(web3j, resolvedAddress)) {
             TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(resolvedAddress, blockchain);
-            double price = tokenPriceService.getTokenPrice(resolvedAddress).getOrDefault("price", -1.0);
-            String icon = tokenIconService.getTokenIcon(resolvedAddress);
 
-            // 獲取代幣特徵和預測
-            Map<String, Object> featureAndPrediction = tokenFeatureService.fetchTokenFeatureAndPredict(resolvedAddress, blockchain);
+            double price = tokenPriceService.getTokenPrice(checksumAddress).getOrDefault("price", -1.0);
+            String icon = tokenIconService.getTokenIcon(checksumAddress, blockchain);
 
             TokenInfoDto tokenInfoDto = TokenInfoDto.builder()
                     .name(tokenDetailsDto.getName())
@@ -149,6 +149,9 @@ public class SortingService {
                     .price(price)
                     .iconUrl(icon)
                     .build();
+
+            // 獲取代幣特徵和預測
+            Map<String, Object> featureAndPrediction = tokenFeatureService.fetchTokenFeatureAndPredict(resolvedAddress, blockchain);
 
             // 如果有預測結果，添加到details中
             if (featureAndPrediction != null) {
@@ -179,6 +182,7 @@ public class SortingService {
 
         // Step 5: Unknown 合約類型
         AddressInfoDto addressInfoDto = AddressInfoDto.builder()
+                .chain(blockchain)
                 .addressType("Unknown")
                 .resolvedAddress(resolvedAddress)
                 .details(null)
@@ -187,15 +191,25 @@ public class SortingService {
     }
 
     private boolean hasERC20Interface(Web3j web3j, String address) {
+        return callSimpleFunction(web3j, address, "decimals") ||
+                callSimpleFunction(web3j, address, "symbol") ||
+                callSimpleFunction(web3j, address, "name");
+    }
+
+    private boolean callSimpleFunction(Web3j web3j, String address, String methodName) {
         try {
-            Function decimals = new Function("decimals", List.of(), List.of(new TypeReference<Uint8>() {}));
-            String encoded = FunctionEncoder.encode(decimals);
+            Function fn = new Function(methodName, List.of(), List.of(new TypeReference<org.web3j.abi.datatypes.Utf8String>() {}));
+            if (methodName.equals("decimals")) {
+                fn = new Function("decimals", List.of(), List.of(new TypeReference<Uint8>() {}));
+            }
+            String encoded = FunctionEncoder.encode(fn);
             EthCall call = web3j.ethCall(Transaction.createEthCallTransaction(null, address, encoded), DefaultBlockParameterName.LATEST).send();
             return call.getValue() != null && !call.getValue().equals("0x");
         } catch (Exception e) {
             return false;
         }
     }
+
 
     private boolean supportsInterface(Web3j web3j, String address, String interfaceId) {
         try {
@@ -213,25 +227,43 @@ public class SortingService {
 
     private String resolveImplementationAddress(Web3j web3j, String proxyAddress) {
         try {
-            BigInteger slot = new BigInteger("360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc", 16);
-            EthGetStorageAt storage = web3j.ethGetStorageAt(
-                    proxyAddress,
-                    slot,
-                    DefaultBlockParameterName.LATEST
-            ).send();
+            String[] slotHexesToTry = {
+                    "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",  // EIP-1967
+                    "0x5c60da1b27dd6c2cfa54c73ec8d58c6fdecf0f3c"                           // AdminUpgradeabilityProxy
+            };
 
-            String raw = storage.getData();
-            if (raw == null || raw.equals("0x") || raw.equals("0x0000000000000000000000000000000000000000000000000000000000000000")) {
-                return null;
+            for (String hexSlot : slotHexesToTry) {
+                BigInteger slot = new BigInteger(hexSlot.substring(2), 16); // 去掉 0x 開頭再轉
+                EthGetStorageAt storage = web3j.ethGetStorageAt(
+                        proxyAddress,
+                        slot,
+                        DefaultBlockParameterName.LATEST
+                ).send();
+
+                String raw = storage.getData();
+                if (raw != null && raw.length() >= 66 &&
+                        !raw.equals("0x") &&
+                        !raw.endsWith("0000000000000000000000000000000000000000")) {
+
+                    String impl = "0x" + raw.substring(raw.length() - 40);
+                    return Keys.toChecksumAddress(impl);
+                }
             }
 
-            if (raw.length() < 66) return null;
+            // fallback: 嘗試直接 call `implementation()` 方法
+            Function implFn = new Function("implementation", List.of(), List.of(new TypeReference<org.web3j.abi.datatypes.Address>() {}));
+            String encoded = FunctionEncoder.encode(implFn);
+            EthCall call = web3j.ethCall(Transaction.createEthCallTransaction(null, proxyAddress, encoded), DefaultBlockParameterName.LATEST).send();
+            String value = call.getValue();
+            if (value != null && value.length() >= 66 && !value.equals("0x")) {
+                String impl = "0x" + value.substring(value.length() - 40);
+                return Keys.toChecksumAddress(impl);
+            }
 
-            String impl = "0x" + raw.substring(raw.length() - 40);
-            return Keys.toChecksumAddress(impl);
         } catch (Exception e) {
-            return null;
+            System.out.println("resolveImplementationAddress error: " + e.getMessage());
         }
+        return null;
     }
 
     private Web3j getWeb3jByChain(String blockchain) {
