@@ -2,6 +2,8 @@ package eth.whoAreYou.service;
 
 import eth.whoAreYou.dto.TokenDetailsDto;
 import eth.whoAreYou.dto.TokenInfoDto;
+import eth.whoAreYou.dto.InteractionInfoDto;
+import eth.whoAreYou.dto.AddressInfoDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.web3j.abi.FunctionEncoder;
@@ -16,7 +18,6 @@ import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.Transaction;
 import org.web3j.protocol.core.methods.response.*;
 import org.web3j.utils.Numeric;
-import eth.whoAreYou.dto.AddressInfoDto;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -30,18 +31,28 @@ public class SortingService {
     private final NFTInfoService nftInfoService;
     private final TokenPriceService tokenPriceService;
     private final TokenIconService tokenIconService;
+    private final AddressInteractionService addressInteractionService;
 
-    public AddressInfoDto classify(String address) throws Exception {
-        String checksumAddress = Keys.toChecksumAddress(address);
+    public AddressInfoDto classify(String targetAddress, String selfAddress) throws Exception {
+        String checksumAddress = Keys.toChecksumAddress(targetAddress);
         EthGetCode ethGetCode = web3jHttp.ethGetCode(checksumAddress, DefaultBlockParameterName.LATEST).send();
 
         String code = ethGetCode.getCode();
+
         if (code == null || code.equals("0x") || code.equals("0x0")) {
-            return AddressInfoDto.builder()
+            // 是 EOA，檢查是否與 selfAddress 有互動
+            AddressInfoDto.AddressInfoDtoBuilder builder = AddressInfoDto.builder()
                     .addressType("EOA")
-                    .resolvedAddress(checksumAddress)
-                    .details(null)
-                    .build();
+                    .resolvedAddress(checksumAddress);
+
+            if (selfAddress != null && !selfAddress.isBlank()) {
+                InteractionInfoDto interaction = addressInteractionService.getInteractionInfo(selfAddress, checksumAddress);
+                builder.details(interaction);
+            } else {
+                builder.details(null);
+            }
+
+            return builder.build();
         }
 
         // Step 1: resolve proxy (EIP-1967)
@@ -84,8 +95,7 @@ public class SortingService {
                     .build();
         }
 
-
-        // Step 5: Other address
+        // Step 5: Unknown 合約類型
         return AddressInfoDto.builder()
                 .addressType("Unknown")
                 .resolvedAddress(resolvedAddress)
@@ -136,6 +146,4 @@ public class SortingService {
             return null;
         }
     }
-
 }
-
