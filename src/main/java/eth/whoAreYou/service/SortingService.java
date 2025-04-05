@@ -29,6 +29,7 @@ public class SortingService {
     private final TokenDetailsService tokenInfoService;
     private final NFTInfoService nftInfoService;
     private final TokenPriceService tokenPriceService;
+    private final TokenIconService tokenIconService;
 
     public AddressInfoDto classify(String address) throws Exception {
         String checksumAddress = Keys.toChecksumAddress(address);
@@ -69,10 +70,12 @@ public class SortingService {
         if (hasERC20Interface(resolvedAddress)) {
             TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(resolvedAddress);
             double price = tokenPriceService.getTokenPrice(resolvedAddress).getOrDefault("price", -1.0);
+            String icon = tokenIconService.getTokenIcon(resolvedAddress);
             TokenInfoDto tokenInfoDto = TokenInfoDto.builder()
                     .name(tokenDetailsDto.getName())
                     .symbol(tokenDetailsDto.getSymbol())
                     .price(price)
+                    .iconUrl(icon)
                     .build();
             return AddressInfoDto.builder()
                     .addressType("ERC-20")
