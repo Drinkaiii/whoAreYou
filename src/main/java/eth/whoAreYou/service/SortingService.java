@@ -5,6 +5,8 @@ import eth.whoAreYou.dto.TokenInfoDto;
 import eth.whoAreYou.dto.InteractionInfoDto;
 import eth.whoAreYou.dto.AddressInfoDto;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.datatypes.Function;
@@ -26,7 +28,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SortingService {
 
-    private final Web3j web3jHttp;
+    @Autowired
+    @Qualifier("ethereumWeb3jHttp")
+    private Web3j ethereumWeb3jHttp;
+
+    @Autowired
+    @Qualifier("baseWeb3jHttp")
+    private Web3j baseWeb3jHttp;
+
     private final TokenDetailsService tokenInfoService;
     private final NFTInfoService nftInfoService;
     private final TokenPriceService tokenPriceService;
@@ -34,10 +43,18 @@ public class SortingService {
     private final AddressInteractionService addressInteractionService;
 
     public AddressInfoDto classify(String targetAddress, String selfAddress) throws Exception {
+        String blockchain;
         String checksumAddress = Keys.toChecksumAddress(targetAddress);
-        EthGetCode ethGetCode = web3jHttp.ethGetCode(checksumAddress, DefaultBlockParameterName.LATEST).send();
-
-        String code = ethGetCode.getCode();
+        EthGetCode ethereumGetCode = ethereumWeb3jHttp.ethGetCode(checksumAddress, DefaultBlockParameterName.LATEST).send();
+        String code = ethereumGetCode.getCode();
+        if (code != null){
+            blockchain = "ETHEREUM";
+        }
+        else {
+            EthGetCode baseGetCode = baseWeb3jHttp.ethGetCode(checksumAddress, DefaultBlockParameterName.LATEST).send();
+            code = baseGetCode.getCode();
+            if (code != null) blockchain = "BASE";
+        }
 
         if (code == null || code.equals("0x") || code.equals("0x0")) {
             // 是 EOA，檢查是否與 selfAddress 有互動
@@ -107,7 +124,7 @@ public class SortingService {
         try {
             Function decimals = new Function("decimals", List.of(), List.of(new TypeReference<Uint8>() {}));
             String encoded = FunctionEncoder.encode(decimals);
-            EthCall call = web3jHttp.ethCall(Transaction.createEthCallTransaction(null, address, encoded), DefaultBlockParameterName.LATEST).send();
+            EthCall call = ethereumWeb3jHttp.ethCall(Transaction.createEthCallTransaction(null, address, encoded), DefaultBlockParameterName.LATEST).send();
             return call.getValue() != null && !call.getValue().equals("0x");
         } catch (Exception e) {
             return false;
@@ -120,7 +137,7 @@ public class SortingService {
                     List.of(new Bytes4(Numeric.hexStringToByteArray(interfaceId))),
                     List.of(new TypeReference<Bool>() {}));
             String encoded = FunctionEncoder.encode(supportsInterface);
-            EthCall call = web3jHttp.ethCall(Transaction.createEthCallTransaction(null, address, encoded),
+            EthCall call = ethereumWeb3jHttp.ethCall(Transaction.createEthCallTransaction(null, address, encoded),
                     DefaultBlockParameterName.LATEST).send();
             return call.getValue() != null && call.getValue().endsWith("1");
         } catch (Exception e) {
@@ -131,7 +148,7 @@ public class SortingService {
     private String resolveImplementationAddress(String proxyAddress) {
         try {
             BigInteger slot = new BigInteger("360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc", 16);
-            EthGetStorageAt storage = web3jHttp.ethGetStorageAt(proxyAddress, slot, DefaultBlockParameterName.LATEST).send();
+            EthGetStorageAt storage = ethereumWeb3jHttp.ethGetStorageAt(proxyAddress, slot, DefaultBlockParameterName.LATEST).send();
 
             String raw = storage.getData();
             // EIP-1967 null is 0x000000...（66 char: 0x + 64*0）
