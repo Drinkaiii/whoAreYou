@@ -15,7 +15,7 @@ public class TransactionFetcher {
     @Value("${nodit.api.key}")
     private String apiKey;
 
-    private static final String BASE_URL = "https://web3.nodit.io/v1/ethereum/mainnet/blockchain/getTransactionsByAccount";
+    private static final String BASE_URL_FORMAT = "https://web3.nodit.io/v1/%s/mainnet/blockchain/getTransactionsByAccount";
     private static final int MAX_RETRIES = 5;
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -23,11 +23,22 @@ public class TransactionFetcher {
 
     public record FetchResult(List<TransactionDto> transactions, int totalCount) {}
 
+    // 原有方法 - 保持向後兼容性，默認使用以太坊
     public FetchResult fetchTransactions(String walletAddress, int maxTransactions) {
         return fetchTransactions(walletAddress, maxTransactions, Integer.MAX_VALUE);
     }
 
+    // 原有方法 - 保持向後兼容性，默認使用以太坊
     public FetchResult fetchTransactions(String walletAddress, int maxTransactions, int maxPages) {
+        return fetchTransactions(walletAddress, maxTransactions, maxPages, "ETHEREUM");
+    }
+
+    // 新方法 - 支援指定鏈
+    public FetchResult fetchTransactions(String walletAddress, int maxTransactions, int maxPages, String chain) {
+        // 轉換鏈名稱為小寫
+        String protocol = mapChainToProtocol(chain);
+        String url = String.format(BASE_URL_FORMAT, protocol);
+
         List<TransactionDto> allTransactions = new ArrayList<>();
         String cursor = null;
         int page = 1;
@@ -52,7 +63,7 @@ public class TransactionFetcher {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
 
             try {
-                ResponseEntity<Map> response = restTemplate.exchange(BASE_URL, HttpMethod.POST, entity, Map.class);
+                ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
 
                 if (response.getStatusCode() == HttpStatus.OK) {
                     retryCount = 0;
@@ -69,17 +80,17 @@ public class TransactionFetcher {
                         allTransactions.add(tx);
                     }
 
-                    System.out.printf("[%s] Page %d - Fetched %d tx%n", walletAddress, page, items.size());
+                    System.out.printf("[%s][%s] Page %d - Fetched %d tx%n", chain, walletAddress, page, items.size());
                     page++;
 
                     if (allTransactions.size() >= maxTransactions) {
-                        System.out.printf("[%s] Reached %d transactions. Stopping.%n", walletAddress, maxTransactions);
+                        System.out.printf("[%s][%s] Reached %d transactions. Stopping.%n", chain, walletAddress, maxTransactions);
                         break;
                     }
 
                     cursor = (String) body.get("cursor");
                     if (cursor == null) {
-                        System.out.printf("[%s] No more transactions. Stopping.%n", walletAddress);
+                        System.out.printf("[%s][%s] No more transactions. Stopping.%n", chain, walletAddress);
                         break;
                     }
 
@@ -88,21 +99,21 @@ public class TransactionFetcher {
                 } else if (response.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
                     retryCount++;
                     if (retryCount > MAX_RETRIES) {
-                        System.out.printf("[%s] ⚠️ Retry limit reached. Stopping.%n", walletAddress);
+                        System.out.printf("[%s][%s] ⚠️ Retry limit reached. Stopping.%n", chain, walletAddress);
                         break;
                     }
-                    System.out.printf("[%s] Rate limit hit. Waiting 10 seconds... (retry %d/%d)%n",
-                            walletAddress, retryCount, MAX_RETRIES);
+                    System.out.printf("[%s][%s] Rate limit hit. Waiting 10 seconds... (retry %d/%d)%n",
+                            chain, walletAddress, retryCount, MAX_RETRIES);
                     Thread.sleep(10_000);
                     continue;
 
                 } else {
-                    System.out.printf("[%s] Error %s: %s%n", walletAddress, response.getStatusCode(), response.getBody());
+                    System.out.printf("[%s][%s] Error %s: %s%n", chain, walletAddress, response.getStatusCode(), response.getBody());
                     break;
                 }
 
             } catch (Exception e) {
-                System.out.printf("[%s] ❌ Exception: %s%n", walletAddress, e.getMessage());
+                System.out.printf("[%s][%s] ❌ Exception: %s%n", chain, walletAddress, e.getMessage());
                 break;
             }
         }
@@ -111,5 +122,16 @@ public class TransactionFetcher {
                 allTransactions.subList(0, Math.min(maxTransactions, allTransactions.size())),
                 totalCount
         );
+    }
+
+    /**
+     * 將鏈識別符映射到 Nodit API 支援的協議名稱
+     */
+    private String mapChainToProtocol(String chain) {
+        return switch (chain.toUpperCase()) {
+            case "ETHEREUM" -> "ethereum";
+            case "BASE" -> "base";
+            default -> "ethereum"; // 預設使用以太坊
+        };
     }
 }

@@ -1,5 +1,6 @@
 package eth.whoAreYou.service;
 
+import eth.whoAreYou.client.AnomalyDetectorClient;
 import eth.whoAreYou.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,7 @@ import org.web3j.protocol.core.methods.response.*;
 import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -38,6 +40,9 @@ public class SortingService {
     private final TokenPriceService tokenPriceService;
     private final TokenIconService tokenIconService;
     private final AddressInteractionService addressInteractionService;
+    private final TransactionFetcher fetcher;
+    private final FeatureExtractor extractor;
+    private final AnomalyDetectorClient detector;
 
     public Object classify(String targetAddress, String selfAddress) throws Exception {
         String blockchain="";
@@ -52,25 +57,52 @@ public class SortingService {
             code = baseGetCode.getCode();
             if (code != null && !code.equals("0x") && !code.equals("0x0"))
                 blockchain = "BASE";
+            else
+                blockchain = "ETHEREUM"; // default to Ethereum if no code found
         }
         Web3j web3j = getWeb3jByChain(blockchain);
 
-        if (code == null || code.equals("0x") || code.equals("0x0")) {
-            // 是 EOA，檢查是否與 selfAddress 有互動
-            AddressInfoDto.AddressInfoDtoBuilder builder = AddressInfoDto.builder()
-                    .addressType("EOA")
-                    .resolvedAddress(checksumAddress);
 
-            if (selfAddress != null && !selfAddress.isBlank()) {
-                InteractionInfoDto interaction = addressInteractionService.getInteractionInfo(selfAddress, checksumAddress);
-                builder.details(interaction);
-            } else {
-                builder.details(null);
+        if (code == null || code.equals("0x") || code.equals("0x0")) {
+            // 是 EOA，查詢兩條鏈的資訊
+            List<AddressInfoDto> addressInfoList = new ArrayList<>();
+
+            // 針對兩條鏈分別查詢
+            List<String> chains = List.of("ETHEREUM", "BASE");
+
+            for (String chain : chains) {
+                AddressInfoDto.AddressInfoDtoBuilder builder = AddressInfoDto.builder()
+                        .addressType("EOA")
+                        .chain(chain)  // 設置鏈標識
+                        .resolvedAddress(checksumAddress);
+
+                // 建立一個 Map 來包含不同來源的資訊
+                java.util.Map<String, Object> detailsMap = new java.util.HashMap<>();
+
+                // 添加互動信息（如果有）
+                if (selfAddress != null && !selfAddress.isBlank()) {
+                    InteractionInfoDto interaction = addressInteractionService.getInteractionInfo(selfAddress, checksumAddress, chain);
+                    detailsMap.put("interaction", interaction);
+                }
+
+                try {
+                    // 提取特徵並進行異常檢測 - 使用對應鏈的端點
+                    TransactionFetcher.FetchResult result = fetcher.fetchTransactions(checksumAddress, 1000, 1, chain);
+                    eth.whoAreYou.dto.WalletFeatureDto features = extractor.extract(result.transactions(), checksumAddress, result.totalCount());
+                    java.util.Map<String, Object> anomalyResult = detector.predict(features, chain);  // 傳入鏈參數
+                    detailsMap.put("anomalyDetection", anomalyResult);
+                } catch (Exception e) {
+                    // 處理異常情況
+                    detailsMap.put("anomalyDetection", java.util.Map.of("error", e.getMessage()));
+                }
+
+                builder.details(detailsMap);
+                addressInfoList.add(builder.build());
             }
 
-            return builder.build();
+            // 返回包含兩條鏈資訊的結果
+            return AddressResponseDto.builder().data(addressInfoList).build();
         }
-
         // Step 1: resolve proxy (EIP-1967)
         String implementation = resolveImplementationAddress(web3j, checksumAddress);
         String resolvedAddress = implementation != null ? implementation : checksumAddress;
