@@ -21,7 +21,9 @@ import org.web3j.utils.Numeric;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +36,9 @@ public class SortingService {
     @Autowired
     @Qualifier("baseWeb3jHttp")
     private Web3j baseWeb3jHttp;
+
+    @Autowired
+    private TokenFeatureService tokenFeatureService;
 
     private final TokenDetailsService tokenInfoService;
     private final NFTInfoService nftInfoService;
@@ -134,21 +139,45 @@ public class SortingService {
         // Step 4: ERC-20 (check decimals/symbol/name)
         if (hasERC20Interface(web3j, resolvedAddress)) {
             TokenDetailsDto tokenDetailsDto = tokenInfoService.getTokenDetails(resolvedAddress, blockchain);
+
             double price = tokenPriceService.getTokenPrice(checksumAddress).getOrDefault("price", -1.0);
             String icon = tokenIconService.getTokenIcon(checksumAddress, blockchain);
+
             TokenInfoDto tokenInfoDto = TokenInfoDto.builder()
                     .name(tokenDetailsDto.getName())
                     .symbol(tokenDetailsDto.getSymbol())
                     .price(price)
                     .iconUrl(icon)
                     .build();
-            AddressInfoDto addressInfoDto = AddressInfoDto.builder()
-                    .chain(blockchain)
-                    .addressType("ERC-20")
-                    .resolvedAddress(resolvedAddress)
-                    .details(tokenInfoDto)
-                    .build();
-            return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
+
+            // 獲取代幣特徵和預測
+            Map<String, Object> featureAndPrediction = tokenFeatureService.fetchTokenFeatureAndPredict(resolvedAddress, blockchain);
+
+            // 如果有預測結果，添加到details中
+            if (featureAndPrediction != null) {
+                Map<String, Object> details = new HashMap<>();
+                details.put("basicInfo", tokenInfoDto);
+                details.put("features", featureAndPrediction);
+
+                AddressInfoDto addressInfoDto = AddressInfoDto.builder()
+                        .chain(blockchain)
+                        .addressType("ERC-20")
+                        .resolvedAddress(resolvedAddress)
+                        .details(details)
+                        .build();
+
+                return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
+            } else {
+                // 如果無法獲取預測，只返回基本信息
+                AddressInfoDto addressInfoDto = AddressInfoDto.builder()
+                        .chain(blockchain)
+                        .addressType("ERC-20")
+                        .resolvedAddress(resolvedAddress)
+                        .details(tokenInfoDto)
+                        .build();
+
+                return AddressResponseDto.builder().data(List.of(addressInfoDto)).build();
+            }
         }
 
         // Step 5: Unknown 合約類型
