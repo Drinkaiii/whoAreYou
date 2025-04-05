@@ -14,10 +14,12 @@ public class AddressController {
 
     private final SortingService sortingService;
 
-    @GetMapping("/{address}")
-    public ResponseEntity<?> classifyAddress(@PathVariable String address) {
+    @GetMapping("/{targetAddress}")
+    public ResponseEntity<?> classifyAddress(
+            @PathVariable String targetAddress,
+            @RequestParam(name = "selfAddress", required = false) String selfAddress) {
         try {
-            AddressInfoDto result = sortingService.classify(address);
+            AddressInfoDto result = sortingService.classify(targetAddress, selfAddress);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
