@@ -19,7 +19,7 @@ public class AddressController {
             @PathVariable String targetAddress,
             @RequestParam(name = "selfAddress", required = false) String selfAddress) {
         try {
-            AddressInfoDto result = sortingService.classify(targetAddress, selfAddress);
+            Object result = sortingService.classify(targetAddress, selfAddress);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

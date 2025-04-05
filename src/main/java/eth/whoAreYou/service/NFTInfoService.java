@@ -28,23 +28,39 @@ import java.util.List;
 public class NFTInfoService {
 
     @Autowired
-    @Qualifier("web3jHttp")
-    private Web3j web3j;
+    @Qualifier("ethereumWeb3jHttp")
+    private Web3j ethereumWeb3jHttp;
+
+    @Autowired
+    @Qualifier("baseWeb3jHttp")
+    private Web3j baseWeb3jHttp;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public NFTInfoDto getNFTInfo(String contractAddress) throws Exception {
-        String name = callStringMethod(contractAddress, "name");
-        BigInteger totalSupply = callUintMethod(contractAddress, "totalSupply");
+    public NFTInfoDto getNFTInfo(String contractAddress, String blockchain) throws Exception {
+        Web3j web3j = resolveWeb3j(blockchain);
+
+        String name = callStringMethod(web3j, contractAddress, "name");
+        BigInteger totalSupply = callUintMethod(web3j, contractAddress, "totalSupply");
 
         // use tokenId = 0 metadata
-        String tokenUri = callTokenURIMethod(contractAddress, BigInteger.ZERO);
+        String tokenUri = callTokenURIMethod(web3j, contractAddress, BigInteger.ZERO);
         String imageUrl = extractImageFromMetadata(tokenUri);
 
         return new NFTInfoDto(name, totalSupply, imageUrl);
     }
 
-    private String callStringMethod(String contractAddress, String methodName) throws Exception {
+    private Web3j resolveWeb3j(String blockchain) {
+        if ("ETHEREUM".equalsIgnoreCase(blockchain)) {
+            return ethereumWeb3jHttp;
+        } else if ("BASE".equalsIgnoreCase(blockchain)) {
+            return baseWeb3jHttp;
+        } else {
+            throw new IllegalArgumentException("Unsupported blockchain: " + blockchain);
+        }
+    }
+
+    private String callStringMethod(Web3j web3j, String contractAddress, String methodName) throws Exception {
         Function function = new Function(
                 methodName,
                 Collections.emptyList(),
@@ -61,7 +77,7 @@ public class NFTInfoService {
         return result.isEmpty() ? null : result.get(0).getValue().toString();
     }
 
-    private BigInteger callUintMethod(String contractAddress, String methodName) throws Exception {
+    private BigInteger callUintMethod(Web3j web3j, String contractAddress, String methodName) throws Exception {
         Function function = new Function(
                 methodName,
                 Collections.emptyList(),
@@ -78,7 +94,7 @@ public class NFTInfoService {
         return result.isEmpty() ? BigInteger.ZERO : (BigInteger) result.get(0).getValue();
     }
 
-    private String callTokenURIMethod(String contractAddress, BigInteger tokenId) throws Exception {
+    private String callTokenURIMethod(Web3j web3j, String contractAddress, BigInteger tokenId) throws Exception {
         Function function = new Function(
                 "tokenURI",
                 Arrays.asList(new Uint256(tokenId)),
